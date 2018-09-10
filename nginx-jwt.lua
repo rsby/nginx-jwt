@@ -1,28 +1,10 @@
 local jwt = require "resty.jwt"
 local cjson = require "cjson"
-local basexx = require "basexx"
-local secret = os.getenv("JWT_SECRET")
-
-assert(secret ~= nil, "Environment variable JWT_SECRET not set")
-
-if os.getenv("JWT_SECRET_IS_BASE64_ENCODED") == 'true' then
-    -- convert from URL-safe Base64 to Base64
-    local r = #secret % 4
-    if r == 2 then
-        secret = secret .. "=="
-    elseif r == 3 then
-        secret = secret .. "="
-    end
-    secret = string.gsub(secret, "-", "+")
-    secret = string.gsub(secret, "_", "/")
-
-    -- convert from Base64 to UTF-8 string
-    secret = basexx.from_base64(secret)
-end
 
 local M = {}
 
 function M.auth(claim_specs)
+    
     -- require Authorization request header
     local auth_header = ngx.var.http_Authorization
 
@@ -43,18 +25,12 @@ function M.auth(claim_specs)
 
     ngx.log(ngx.INFO, "Token: " .. token)
 
-    -- require valid JWT
-    local jwt_obj = jwt:verify(secret, token, 0)
-    if jwt_obj.verified == false then
-        ngx.log(ngx.WARN, "Invalid token: ".. jwt_obj.reason)
-        ngx.exit(ngx.HTTP_UNAUTHORIZED)
-    end
-
+    -- load JWT
+    local jwt_obj = jwt:load_jwt(token)
     ngx.log(ngx.INFO, "JWT: " .. cjson.encode(jwt_obj))
 
     -- optionally require specific claims
     if claim_specs ~= nil then
-        --TODO: test
         -- make sure they passed a Table
         if type(claim_specs) ~= 'table' then
             ngx.log(ngx.STDERR, "Configuration error: claim_specs arg must be a table")
@@ -91,7 +67,6 @@ function M.auth(claim_specs)
             local spec_action = spec_actions[type(spec)]
 
             -- make sure claim spec is a supported type
-            -- TODO: test
             if spec_action == nil then
                 ngx.log(ngx.STDERR, "Configuration error: claim_specs arg claim '" .. claim .. "' must be a string or a table")
                 ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
